@@ -1370,6 +1370,7 @@ function psNormalisePlayerCode(v){
 function psAcceptPlayerCode(){
   const input=document.getElementById('playerCodeInput');
   const error=document.getElementById('playerCodeError');
+  const startBtn=document.getElementById('playerCodeStart');
   const code=psNormalisePlayerCode(input.value);
   input.value=code;
 
@@ -1378,14 +1379,63 @@ function psAcceptPlayerCode(){
     return;
   }
 
-  psPlayerCode=code;
-  psPlayerCodeAccepted=true;
-  error.textContent='';
-  document.getElementById('playerCodeOverlay').style.display='none';
+  if(window.psPlayerValidationPending)return;
+  window.psPlayerValidationPending=true;
+  error.style.color='#00e7e7';
+  error.textContent='CHECKING PLAYER CODE...';
+  if(startBtn)startBtn.disabled=true;
 
-  // Begin a fresh run only after a valid player code is accepted.
-  psAudioInit();
-  reset();
+  const callbackName='psValidatePlayer_'+Date.now();
+  const script=document.createElement('script');
+  let finished=false;
+
+  function cleanup(){
+    if(finished)return;
+    finished=true;
+    window.psPlayerValidationPending=false;
+    if(startBtn)startBtn.disabled=false;
+    if(script.parentNode)script.parentNode.removeChild(script);
+    try{delete window[callbackName];}catch(e){window[callbackName]=undefined;}
+  }
+
+  const timer=setTimeout(()=>{
+    cleanup();
+    error.style.color='#ff5b5b';
+    error.textContent='COULD NOT CHECK PLAYER CODE — TRY AGAIN';
+  },10000);
+
+  window[callbackName]=function(result){
+    clearTimeout(timer);
+    cleanup();
+
+    if(result && result.found){
+      psPlayerCode=psNormalisePlayerCode(result.playerCode||code);
+      psPlayerCodeAccepted=true;
+      error.textContent='';
+      document.getElementById('playerCodeOverlay').style.display='none';
+      psAudioInit();
+      reset();
+      return;
+    }
+
+    psPlayerCode='';
+    psPlayerCodeAccepted=false;
+    error.style.color='#ff5b5b';
+    error.textContent='PLAYER CODE NOT FOUND';
+    input.focus();
+    input.select();
+  };
+
+  script.onerror=function(){
+    clearTimeout(timer);
+    cleanup();
+    error.style.color='#ff5b5b';
+    error.textContent='COULD NOT CHECK PLAYER CODE — TRY AGAIN';
+  };
+
+  script.src='https://script.google.com/macros/s/AKfycbzyUtLxRN-TMJHGb4moYNWBwP7MNSc_AkqyjU0jyeKzj5UK0Ap5ah7H8k4lblgFmPVlJA/exec?action=validatePlayer&code='
+    +encodeURIComponent(code)+'&callback='+encodeURIComponent(callbackName);
+  document.head.appendChild(script);
 }
 
 function psSetupPlayerCode(){
